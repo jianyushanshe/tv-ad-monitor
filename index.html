@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>广告请求实时监控</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: 'Segoe UI', 'Microsoft YaHei', 'Consolas', monospace; background: #0f0f1a; color: #e0e0e0; padding: 16px; }
+.header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 10px; }
+.header h1 { font-size: 20px; color: #ff4757; }
+.stats { display: flex; gap: 12px; flex-wrap: wrap; }
+.stat { background: #1a1a2e; padding: 6px 14px; border-radius: 8px; border: 1px solid #2a2a3e; }
+.stat .num { font-size: 22px; font-weight: bold; color: #ff4757; }
+.stat .label { font-size: 11px; color: #888; }
+.banner { background: #1a2a1a; border: 1px solid #2ed573; padding: 8px 14px; border-radius: 6px; margin-bottom: 10px; font-size: 12px; color: #2ed573; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px; }
+.banner .live-dot { width: 8px; height: 8px; background: #2ed573; border-radius: 50%; display: inline-block; animation: blink 1s infinite; }
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
+.controls { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; flex-wrap: wrap; }
+.controls button, .controls select, .controls input { background: #1a1a2e; color: #e0e0e0; border: 1px solid #333; padding: 7px 12px; border-radius: 6px; font-size: 12px; cursor: pointer; }
+.controls button:hover { border-color: #ff4757; }
+.controls input { width: 200px; cursor: text; }
+table { width: 100%; border-collapse: collapse; font-size: 11px; }
+th { background: #1a1a2e; padding: 8px 6px; text-align: left; position: sticky; top: 0; z-index: 2; border-bottom: 2px solid #ff4757; font-size: 11px; color: #aaa; }
+td { padding: 5px 6px; border-bottom: 1px solid #1a1a2e; cursor: pointer; }
+tr.data-row:hover { background: rgba(255,71,87,0.06); }
+tr.data-row.expanded { background: rgba(255,71,87,0.1); }
+tr.new-highlight td { animation: hl 1.5s ease; }
+@keyframes hl { from { background: rgba(255,71,87,0.3); } to { background: transparent; } }
+.method { font-weight: bold; display: inline-block; min-width: 40px; font-size: 10px; }
+.method.GET { color: #2ed573; }
+.method.POST { color: #ffa502; }
+.status-2xx { color: #2ed573; }
+.status-3xx { color: #70a1ff; }
+.status-4xx { color: #ffa502; }
+.status-5xx { color: #ff4757; }
+.url-cell { max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; }
+.app-cell { max-width: 100px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; font-size: 10px; }
+.pkg-cell { max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; font-size: 10px; color: #888; font-family: 'Consolas', monospace; }
+.sdk-tag { background: #1a3a5e; color: #70a1ff; padding: 1px 6px; border-radius: 4px; font-size: 9px; white-space: nowrap; }
+.size-cell { color: #888; text-align: right; }
+.no-data { text-align: center; padding: 60px; color: #555; font-size: 15px; }
+.detail-row td { padding: 0; }
+.detail-panel { background: #14142b; border: 1px solid #2a2a3e; border-radius: 8px; margin: 4px 8px; overflow: hidden; }
+.detail-toolbar { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; background: #1a1a2e; border-bottom: 1px solid #2a2a3e; }
+.detail-toolbar .toolbar-label { font-size: 10px; color: #888; }
+.detail-toolbar .toolbar-actions { display: flex; gap: 6px; }
+.toolbar-btn { background: #232340; color: #aaa; border: 1px solid #333; padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 10px; white-space: nowrap; }
+.toolbar-btn:hover { color: #fff; border-color: #ff4757; }
+.toolbar-btn.copy-all { background: #2a1a1a; border-color: #ff4757; color: #ff4757; font-weight: bold; }
+.toolbar-btn.copy-all:hover { background: #ff4757; color: #fff; }
+.toolbar-btn.copied { color: #2ed573; border-color: #2ed573; background: #1a2a1a; }
+.detail-tabs { display: flex; background: #111122; border-bottom: 1px solid #2a2a3e; }
+.detail-tab { padding: 8px 16px; cursor: pointer; font-size: 11px; color: #888; border: none; background: none; transition: color 0.15s; position: relative; }
+.detail-tab:hover { color: #e0e0e0; }
+.detail-tab.active { color: #ff4757; }
+.detail-tab.active::after { content:''; position: absolute; bottom:0; left:50%; transform: translateX(-50%); width: 60%; height: 2px; background: #ff4757; border-radius: 2px; }
+.detail-content { padding: 12px; max-height: 600px; overflow-y: auto; }
+.detail-section { margin-bottom: 14px; display: none; }
+.detail-section.active { display: block; }
+.section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.section-header span { font-size: 12px; color: #ff4757; font-weight: bold; }
+.copy-btn { background: #232340; color: #aaa; border: 1px solid #333; padding: 4px 12px; border-radius: 4px; cursor: pointer; font-size: 10px; transition: all 0.15s; }
+.copy-btn:hover { color: #fff; border-color: #ff4757; }
+.copy-btn.copied { color: #2ed573; border-color: #2ed573; background: #1a2a1a; }
+.kv-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+.kv-table td { padding: 3px 6px; border: none; cursor: default; }
+.kv-table td.key { color: #70a1ff; width: 200px; vertical-align: top; font-family: 'Consolas', monospace; }
+.kv-table td.val { color: #e0e0e0; word-break: break-all; font-family: 'Consolas', monospace; }
+.body-content { background: #0d0d1a; padding: 10px; border-radius: 4px; font-size: 11px; font-family: 'Consolas', monospace; white-space: pre-wrap; word-break: break-all; max-height: 400px; overflow-y: auto; color: #ccc; border: 1px solid #1a1a2e; }
+.body-empty { color: #555; font-style: italic; padding: 20px; text-align: center; }
+.url-full { word-break: break-all; font-size: 11px; color: #70a1ff; margin-bottom: 10px; line-height: 1.6; }
+.footer { margin-top: 10px; font-size: 10px; color: #444; text-align: center; }
+.toast { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); background: #2ed573; color: #000; padding: 10px 24px; border-radius: 8px; font-size: 13px; font-weight: bold; z-index: 999; opacity: 0; transition: opacity 0.3s; pointer-events: none; }
+.toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+<div class="toast" id="toast"></div>
+<div class="header">
+  <h1>🔴 广告请求实时监控</h1>
+  <div class="stats">
+    <div class="stat"><div class="num" id="total">0</div><div class="label">总捕获</div></div>
+    <div class="stat"><div class="num" id="newCount">0</div><div class="label">本轮新增</div></div>
+  </div>
+</div>
+<div class="banner">
+  <span><span class="live-dot"></span> <strong>实时同步中</strong> — 数据每2秒自动拉取</span>
+  <span>更新: <span id="updateTime">2026-07-21 11:51:49</span></span>
+</div>
+<div class="controls">
+  <select id="sdkFilter" onchange="renderTable()"><option value="">全部SDK</option></select>
+  <select id="appFilter" onchange="renderTable()"><option value="">全部App</option></select>
+  <input type="text" id="urlFilter" placeholder="搜索 URL 关键词..." oninput="renderTable()">
+</div>
+<table>
+<thead>
+  <tr><th style="width:44px">方法</th><th style="width:44px">状态</th><th>URL</th><th style="width:100px">App名称</th><th style="width:120px">App包名</th><th style="width:95px">SDK平台</th><th style="width:55px">大小</th></tr>
+</thead>
+<tbody id="tbody">
+  <tr><td colspan="7" class="no-data">正在连接数据源...</td></tr>
+</tbody>
+</table>
+<div class="footer">实时监控 · 数据源: jsonblob.com · <span id="liveStatus">连接中...</span></div>
+
+<script src="initial_data.js"></script>
+<script>
+var BLOB_URLS = ["https://jsonblob.com/api/jsonBlob/019f82be-da47-7df7-818e-6a8838e55f54", "https://jsonblob.com/api/jsonBlob/019f82bf-077d-7f69-a70d-74f1e3dab3ab", "https://jsonblob.com/api/jsonBlob/019f82bf-0ad8-7234-80d2-0baa17b9a151"];
+var allData = [];
+var seenKeys = {};
+// Load embedded historical data first (full data with headers/bodies)
+if (typeof INITIAL_DATA !== 'undefined' && Array.isArray(INITIAL_DATA)) {
+  allData = INITIAL_DATA;
+  for (var i = 0; i < allData.length; i++) seenKeys[rowId(allData[i])] = 1;
+}
+// Render immediately with local data, then start polling
+if (allData.length > 0) {
+  document.getElementById('total').textContent = allData.length;
+  document.getElementById('updateTime').textContent = new Date().toLocaleTimeString();
+  document.getElementById('liveStatus').textContent = '已连接 (' + allData.length + ' 条本地数据)';
+  initFilters();
+  renderTable();
+}
+var expandedIdx = -1;
+var expandedRowId = null;
+var activeTab = 'overview';
+
+function statusClass(sc) {
+  if (sc >= 200 && sc < 300) return 'status-2xx';
+  if (sc >= 300 && sc < 400) return 'status-3xx';
+  if (sc >= 400 && sc < 500) return 'status-4xx';
+  if (sc >= 500) return 'status-5xx';
+  return '';
+}
+function fmtSize(n) {
+  if (!n) return '-';
+  if (n > 1048576) return (n/1048576).toFixed(1)+'MB';
+  if (n > 1024) return (n/1024).toFixed(1)+'KB';
+  return n+'B';
+}
+function escapeHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function rowId(item) {
+  return (item.method||'') + '|' + (item.url||'') + '|' + (item.status||'') + '|' + (item.sdk||'');
+}
+function renderKV(headers) {
+  if (!headers || typeof headers !== 'object') return '<div class="body-empty">无数据</div>';
+  var rows = '';
+  for (var k in headers) {
+    if (headers.hasOwnProperty(k)) {
+      rows += '<tr><td class="key">' + escapeHtml(k) + '</td><td class="val">' + escapeHtml(String(headers[k])) + '</td></tr>';
+    }
+  }
+  return '<table class="kv-table">' + rows + '</table>';
+}
+function showToast(msg) {
+  var t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  clearTimeout(t._timeout);
+  t._timeout = setTimeout(function(){ t.classList.remove('show'); }, 1800);
+}
+
+function initFilters() {
+  var sdks = {}, apps = {};
+  for (var i = 0; i < allData.length; i++) {
+    if (allData[i].sdk) sdks[allData[i].sdk] = 1;
+    if (allData[i].app_name) apps[allData[i].app_name] = 1;
+  }
+  var ssel = document.getElementById('sdkFilter'), sval = ssel.value;
+  var skeys = Object.keys(sdks).sort();
+  ssel.innerHTML = '<option value="">全部SDK</option>';
+  for (var s = 0; s < skeys.length; s++) ssel.innerHTML += '<option>' + skeys[s] + '</option>';
+  ssel.value = sval;
+  var asel = document.getElementById('appFilter'), aval = asel.value;
+  var akeys = Object.keys(apps).sort();
+  asel.innerHTML = '<option value="">全部App</option>';
+  for (var a = 0; a < akeys.length; a++) asel.innerHTML += '<option>' + akeys[a] + '</option>';
+  asel.value = aval;
+}
+
+function getFiltered() {
+  var sf = document.getElementById('sdkFilter').value;
+  var af = document.getElementById('appFilter').value;
+  var uf = document.getElementById('urlFilter').value.toLowerCase();
+  var result = allData;
+  if (sf) result = result.filter(function(i){ return i.sdk === sf; });
+  if (af) result = result.filter(function(i){ return i.app_name === af; });
+  if (uf) result = result.filter(function(i){ return i.url.toLowerCase().indexOf(uf) >= 0; });
+  return result;
+}
+
+async function fetchData() {
+  try {
+    // Fetch all blob URLs in parallel
+    var allBlobData = [];
+    for (var b = 0; b < BLOB_URLS.length; b++) {
+      try {
+        var resp = await fetch(BLOB_URLS[b], {cache: 'no-store'});
+        var part = await resp.json();
+        if (Array.isArray(part)) allBlobData = allBlobData.concat(part);
+      } catch(eb) { console.error('Blob fetch error:', BLOB_URLS[b], eb); }
+    }
+
+    var newCount = 0;
+    // Merge: add records from blobs not already in allData
+    for (var j = 0; j < allBlobData.length; j++) {
+      var key = rowId(allBlobData[j]);
+      if (!seenKeys[key]) {
+        allData.push(allBlobData[j]);
+        seenKeys[key] = 1;
+        newCount++;
+      }
+    }
+
+    // Update expanded index
+    if (expandedRowId) {
+      var found = -1;
+      for (var f = 0; f < allData.length; f++) {
+        if (rowId(allData[f]) === expandedRowId) { found = f; break; }
+      }
+      expandedIdx = found;
+      if (expandedIdx < 0) expandedRowId = null;
+    }
+
+    document.getElementById('newCount').textContent = newCount;
+    document.getElementById('total').textContent = allData.length;
+    document.getElementById('updateTime').textContent = new Date().toLocaleTimeString();
+    document.getElementById('liveStatus').textContent = '已连接 (' + allData.length + ' 条)';
+    initFilters();
+    renderTable();
+  } catch(e) {
+    document.getElementById('liveStatus').textContent = '连接失败，重试中...';
+    console.error(e);
+  }
+}
+
+function renderTable() {
+  var filtered = getFiltered();
+  var tbody = document.getElementById('tbody');
+  var savedExpandedIdx = expandedIdx;
+  var savedActiveTab = activeTab;
+  var savedExpandedRowId = expandedRowId;
+
+  if (filtered.length === 0) {
+    expandedIdx = -1; expandedRowId = null;
+    tbody.innerHTML = '<tr><td colspan="7" class="no-data">没有匹配的广告请求（数据源: ' + allData.length + ' 条）</td></tr>';
+    return;
+  }
+
+  var targetIdx = -1;
+  if (savedExpandedRowId) {
+    for (var f = 0; f < filtered.length; f++) {
+      if (rowId(filtered[f]) === savedExpandedRowId) { targetIdx = f; break; }
+    }
+  }
+  if (targetIdx < 0 && savedExpandedIdx >= 0 && savedExpandedIdx < filtered.length) targetIdx = savedExpandedIdx;
+  expandedIdx = targetIdx;
+
+  var html = '';
+  for (var i = 0; i < filtered.length; i++) {
+    var item = filtered[i];
+    var sc = item.status || 0;
+    var isExpanded = (expandedIdx === i);
+    var appPkg = item.app_pkg || '-';
+    var appName = item.app_name || '-';
+    var sdkName = item.sdk || '-';
+    var confIcon = item.app_conf === 'confirmed' ? '✅' : (item.app_conf === 'unknown' ? '❓' : '🔍');
+
+    html += '<tr class="data-row' + (isExpanded?' expanded':'') + '" onclick="toggleDetail(' + i + ')">' +
+      '<td><span class="method ' + item.method + '">' + item.method + '</span></td>' +
+      '<td><span class="' + statusClass(sc) + '">' + (item.status||'-') + '</span></td>' +
+      '<td><span class="url-cell" title="' + escapeHtml(item.url) + '">' + escapeHtml(item.url.substring(0,80)) + '</span></td>' +
+      '<td><span class="app-cell">' + confIcon + ' ' + escapeHtml(appName) + '</span></td>' +
+      '<td><span class="pkg-cell">' + escapeHtml(appPkg) + '</span></td>' +
+      '<td><span class="sdk-tag">' + escapeHtml(sdkName) + '</span></td>' +
+      '<td class="size-cell">' + fmtSize(item.response_size) + '</td>' +
+    '</tr>';
+
+    if (isExpanded) {
+      var reqBody = item.request_body || '';
+      var respBody = item.response_body || '';
+      var curTab = savedActiveTab;
+      var rid = rowId(item);
+      html += '<tr class="detail-row" data-rid="' + escapeHtml(rid) + '"><td colspan="7">' +
+        '<div class="detail-panel">' +
+          '<div class="detail-toolbar">' +
+            '<span class="toolbar-label">#' + (i + 1) + ' / ' + filtered.length + '</span>' +
+            '<div class="toolbar-actions">' +
+              '<button class="toolbar-btn copy-all" onclick="event.stopPropagation();copyAll(this)">📋 复制全部信息</button>' +
+              '<button class="toolbar-btn" onclick="event.stopPropagation();copyUrl(this)">🔗 复制URL</button>' +
+            '</div>' +
+          '</div>' +
+          '<div class="detail-tabs">' +
+            '<button class="detail-tab' + (curTab==='overview'?' active':'') + '" onclick="event.stopPropagation();switchTab(' + i + ",'overview'" + ')">概览</button>' +
+            '<button class="detail-tab' + (curTab==='req-headers'?' active':'') + '" onclick="event.stopPropagation();switchTab(' + i + ",'req-headers'" + ')">请求头</button>' +
+            '<button class="detail-tab' + (curTab==='req-body'?' active':'') + '" onclick="event.stopPropagation();switchTab(' + i + ",'req-body'" + ')">请求体</button>' +
+            '<button class="detail-tab' + (curTab==='resp-headers'?' active':'') + '" onclick="event.stopPropagation();switchTab(' + i + ",'resp-headers'" + ')">响应头</button>' +
+            '<button class="detail-tab' + (curTab==='resp-body'?' active':'') + '" onclick="event.stopPropagation();switchTab(' + i + ",'resp-body'" + ')">响应体</button>' +
+          '</div>' +
+          '<div class="detail-content">' +
+            '<div class="detail-section' + (curTab==='overview'?' active':'') + '" id="tab-' + i + '-overview">' +
+              '<div class="url-full">' + escapeHtml(item.url) + '</div>' +
+              '<table class="kv-table">' +
+                '<tr><td class="key">Method</td><td class="val">' + item.method + '</td></tr>' +
+                '<tr><td class="key">HTTP Version</td><td class="val">' + (item.http_version||'-') + '</td></tr>' +
+                '<tr><td class="key">Path</td><td class="val">' + escapeHtml(item.path||'') + '</td></tr>' +
+                '<tr><td class="key">Status</td><td class="val">' + (item.status||'-') + ' ' + (item.status_text||'') + '</td></tr>' +
+                '<tr><td class="key">App名称</td><td class="val">' + escapeHtml(appName) + ' <span style="color:#888;font-size:10px">(' + (item.app_conf||'') + ')</span></td></tr>' +
+                '<tr><td class="key">App包名</td><td class="val">' + escapeHtml(appPkg) + '</td></tr>' +
+                '<tr><td class="key">广告SDK</td><td class="val"><span class="sdk-tag">' + escapeHtml(sdkName) + '</span></td></tr>' +
+                '<tr><td class="key">检测原因</td><td class="val">' + escapeHtml(item.reason||'') + '</td></tr>' +
+                '<tr><td class="key">Content-Type</td><td class="val">' + escapeHtml(item.content_type||'-') + '</td></tr>' +
+                '<tr><td class="key">Request Size</td><td class="val">' + fmtSize(item.request_body_size) + '</td></tr>' +
+                '<tr><td class="key">Response Size</td><td class="val">' + fmtSize(item.response_size) + '</td></tr>' +
+              '</table>' +
+            '</div>' +
+            '<div class="detail-section' + (curTab==='req-headers'?' active':'') + '" id="tab-' + i + '-req-headers">' +
+              '<div class="section-header"><span>Request Headers</span><button class="copy-btn" onclick="event.stopPropagation();copyHeaders(this,\'request\')">📋 复制</button></div>' +
+              '<div>' + renderKV(item.request_headers) + '</div>' +
+            '</div>' +
+            '<div class="detail-section' + (curTab==='req-body'?' active':'') + '" id="tab-' + i + '-req-body">' +
+              '<div class="section-header"><span>Request Body</span><button class="copy-btn" onclick="event.stopPropagation();copyBody(this,\'request\')">📋 复制</button></div>' +
+              (reqBody ? '<div class="body-content">' + escapeHtml(reqBody) + '</div>' : '<div class="body-empty">请求体为空</div>') +
+            '</div>' +
+            '<div class="detail-section' + (curTab==='resp-headers'?' active':'') + '" id="tab-' + i + '-resp-headers">' +
+              '<div class="section-header"><span>Response Headers</span><button class="copy-btn" onclick="event.stopPropagation();copyHeaders(this,\'response\')">📋 复制</button></div>' +
+              '<div>' + renderKV(item.response_headers) + '</div>' +
+            '</div>' +
+            '<div class="detail-section' + (curTab==='resp-body'?' active':'') + '" id="tab-' + i + '-resp-body">' +
+              '<div class="section-header"><span>Response Body</span><button class="copy-btn" onclick="event.stopPropagation();copyBody(this,\'response\')">📋 复制</button></div>' +
+              (respBody ? '<div class="body-content">' + escapeHtml(respBody) + '</div>' : '<div class="body-empty">响应体为空</div>') +
+            '</div>' +
+          '</div>' +
+        '</div>' +
+      '</td></tr>';
+    }
+  }
+  tbody.innerHTML = html;
+}
+
+// Copy helpers
+function _getItemFromBtn(btn) {
+  var row = btn.closest('.detail-row');
+  if (!row) return null;
+  var rid = row.getAttribute('data-rid');
+  if (!rid) return null;
+  for (var j = 0; j < allData.length; j++) {
+    if (rowId(allData[j]) === rid) return allData[j];
+  }
+  return null;
+}
+function _kvText(headers) {
+  if (!headers || typeof headers !== 'object') return '';
+  var lines = [];
+  for (var k in headers) { if (headers.hasOwnProperty(k)) lines.push(k + ': ' + headers[k]); }
+  return lines.join('\\n');
+}
+function _copy(text, label) {
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(text).then(function(){ showToast(label + ' - 已复制'); }).catch(function(){ _copyFallback(text, label); });
+  } else { _copyFallback(text, label); }
+}
+function _copyFallback(text, label) {
+  var ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0;pointer-events:none;z-index:-1';
+  document.body.appendChild(ta);
+  ta.focus(); ta.select();
+  try { var ok = document.execCommand('copy'); showToast(ok ? (label + ' - 已复制') : '复制失败，请手动 Ctrl+C'); }
+  catch(e) { showToast('复制失败: ' + e.message); }
+  document.body.removeChild(ta);
+}
+function copyAll(btn) {
+  var item = _getItemFromBtn(btn);
+  if (!item) return;
+  var parts = [];
+  parts.push('=== App: ' + (item.app_name||'?') + ' (' + (item.app_pkg||'?') + ') ===');
+  parts.push('=== SDK: ' + (item.sdk||'?') + ' ===');
+  parts.push('');
+  parts.push('=== URL ===');
+  parts.push(item.url);
+  parts.push('');
+  parts.push('=== Method: ' + item.method + ' | Status: ' + (item.status||'-') + ' ' + (item.status_text||'') + ' ===');
+  parts.push('');
+  parts.push('--- Request Headers ---');
+  parts.push(_kvText(item.request_headers));
+  parts.push('');
+  if (item.request_body) { parts.push('--- Request Body ---'); parts.push(item.request_body); parts.push(''); }
+  parts.push('--- Response Headers ---');
+  parts.push(_kvText(item.response_headers));
+  parts.push('');
+  if (item.response_body) { parts.push('--- Response Body ---'); parts.push(item.response_body); }
+  _copy(parts.join('\\n'), '全部信息');
+}
+function copyUrl(btn) { var item = _getItemFromBtn(btn); if (item) _copy(item.url, 'URL'); }
+function copyHeaders(btn, type) {
+  var item = _getItemFromBtn(btn);
+  if (!item) return;
+  var headers = type === 'request' ? item.request_headers : item.response_headers;
+  _copy(_kvText(headers), type === 'request' ? '请求头' : '响应头');
+}
+function copyBody(btn, type) {
+  var item = _getItemFromBtn(btn);
+  if (!item) return;
+  var body = type === 'request' ? item.request_body : item.response_body;
+  _copy(body || '', type === 'request' ? '请求体' : '响应体');
+}
+function switchTab(idx, tab) {
+  activeTab = tab;
+  var prefix = 'tab-' + idx + '-';
+  var sections = document.querySelectorAll('[id^="' + prefix + '"]');
+  for (var s = 0; s < sections.length; s++) sections[s].classList.remove('active');
+  var target = document.getElementById(prefix + tab);
+  if (target) target.classList.add('active');
+  var panel = target.closest('.detail-panel');
+  if (panel) {
+    var btns = panel.querySelectorAll('.detail-tab');
+    for (var b = 0; b < btns.length; b++) btns[b].classList.remove('active');
+    var tabNames = ['overview','req-headers','req-body','resp-headers','resp-body'];
+    var tabIdx = tabNames.indexOf(tab);
+    if (tabIdx >= 0 && btns[tabIdx]) btns[tabIdx].classList.add('active');
+  }
+}
+function toggleDetail(idx) {
+  if (expandedIdx === idx) {
+    expandedIdx = -1; expandedRowId = null; activeTab = 'overview';
+  } else {
+    expandedIdx = idx;
+    var filtered = getFiltered();
+    expandedRowId = rowId(filtered[idx]);
+    activeTab = 'overview';
+  }
+  renderTable();
+  if (expandedIdx >= 0) {
+    setTimeout(function(){
+      var panel = document.querySelector('.detail-panel');
+      if (panel) panel.scrollIntoView({behavior:'smooth',block:'nearest'});
+    }, 50);
+  }
+}
+
+// Start polling
+fetchData();
+setInterval(fetchData, 2000);
+</script>
+</body>
+</html>
