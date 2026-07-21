@@ -86,7 +86,7 @@ tr.new-highlight td { animation: hl 1.5s ease; }
 </div>
 <div class="banner">
   <span><span class="live-dot"></span> <strong>实时同步中</strong> — 数据每2秒自动拉取</span>
-  <span>更新: <span id="updateTime">2026-07-21 13:56:25</span></span>
+  <span>更新: <span id="updateTime">2026-07-21 14:27:07</span></span>
 </div>
 <div class="controls">
   <select id="sdkFilter" onchange="renderTable()"><option value="">全部SDK</option></select>
@@ -110,7 +110,7 @@ var allData = [];
 var seenKeys = {};
 // Load embedded historical data first (full data with headers/bodies)
 if (typeof INITIAL_DATA !== 'undefined' && Array.isArray(INITIAL_DATA)) {
-  allData = INITIAL_DATA;
+  allData = INITIAL_DATA.slice().reverse();
   for (var i = 0; i < allData.length; i++) seenKeys[rowId(allData[i])] = 1;
 }
 // Render immediately with local data, then start polling
@@ -153,6 +153,15 @@ function renderKV(headers) {
     }
   }
   return '<table class="kv-table">' + rows + '</table>';
+}
+function renderBody(body, isBinary) {
+  if (!body) return '<div class="body-empty">（空）</div>';
+  if (isBinary) {
+    return '<div class="body-content" style="color:#ffa502;font-family:Consolas,monospace">'
+      + '<div style="color:#ff4757;margin-bottom:6px">\u26a0 \u4e8c\u8fdb\u5236\u6570\u636e\uff08Base64\u7f16\u7801\uff09</div>'
+      + '<pre style="font-size:10px;max-height:300px;overflow:auto;white-space:pre-wrap;word-break:break-all">' + escapeHtml(body) + '</pre></div>';
+  }
+  return '<div class="body-content">' + escapeHtml(body) + '</div>';
 }
 function showToast(msg) {
   var t = document.getElementById('toast');
@@ -207,7 +216,7 @@ async function fetchData() {
     for (var j = 0; j < allBlobData.length; j++) {
       var key = rowId(allBlobData[j]);
       if (!seenKeys[key]) {
-        allData.push(allBlobData[j]);
+        allData.unshift(allBlobData[j]);
         seenKeys[key] = 1;
         newCount++;
       }
@@ -280,6 +289,8 @@ function renderTable() {
     if (isExpanded) {
       var reqBody = item.request_body || '';
       var respBody = item.response_body || '';
+      var reqBodyBin = item.request_body_binary;
+      var respBodyBin = item.response_body_binary;
       var curTab = savedActiveTab;
       var rid = rowId(item);
       html += '<tr class="detail-row" data-rid="' + escapeHtml(rid) + '"><td colspan="7">' +
@@ -321,7 +332,7 @@ function renderTable() {
             '</div>' +
             '<div class="detail-section' + (curTab==='req-body'?' active':'') + '" id="tab-' + i + '-req-body">' +
               '<div class="section-header"><span>Request Body</span><button class="copy-btn" onclick="event.stopPropagation();copyBody(this,\'request\')">📋 复制</button></div>' +
-              (reqBody ? '<div class="body-content">' + escapeHtml(reqBody) + '</div>' : '<div class="body-empty">请求体为空</div>') +
+              (reqBody || reqBodyBin ? renderBody(reqBody, reqBodyBin) : '<div class="body-empty">请求体为空</div>') +
             '</div>' +
             '<div class="detail-section' + (curTab==='resp-headers'?' active':'') + '" id="tab-' + i + '-resp-headers">' +
               '<div class="section-header"><span>Response Headers</span><button class="copy-btn" onclick="event.stopPropagation();copyHeaders(this,\'response\')">📋 复制</button></div>' +
@@ -329,7 +340,7 @@ function renderTable() {
             '</div>' +
             '<div class="detail-section' + (curTab==='resp-body'?' active':'') + '" id="tab-' + i + '-resp-body">' +
               '<div class="section-header"><span>Response Body</span><button class="copy-btn" onclick="event.stopPropagation();copyBody(this,\'response\')">📋 复制</button></div>' +
-              (respBody ? '<div class="body-content">' + escapeHtml(respBody) + '</div>' : '<div class="body-empty">响应体为空</div>') +
+              (respBody || respBodyBin ? renderBody(respBody, respBodyBin) : '<div class="body-empty">响应体为空</div>') +
             '</div>' +
           '</div>' +
         '</div>' +
